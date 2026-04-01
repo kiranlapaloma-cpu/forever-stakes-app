@@ -89,22 +89,26 @@ async function startGame() {
 }
 
 async function restoreGuest() {
-  const savedName = localStorage.getItem('forever_stakes_guest_name');
-  if (!savedName) return;
+  try {
+    const savedName = localStorage.getItem('forever_stakes_guest_name');
+    if (!savedName) return;
 
-  const { data: guest, error } = await supabaseClient
-    .from('guests')
-    .select('*')
-    .eq('name', savedName)
-    .maybeSingle();
+    const { data: guest, error } = await supabaseClient
+      .from('guests')
+      .select('*')
+      .eq('name', savedName)
+      .maybeSingle();
 
-  if (error || !guest) return;
+    if (error || !guest) return;
 
-  currentGuest = guest;
-  balanceDisplay.textContent = `${guest.current_balance} K-Max Credits`;
-  loginCard.classList.add('hidden');
-  appSection.classList.remove('hidden');
-  await loadMarkets();
+    currentGuest = guest;
+    balanceDisplay.textContent = `${guest.current_balance} K-Max Credits`;
+    loginCard.classList.add('hidden');
+    appSection.classList.remove('hidden');
+    await loadMarkets();
+  } catch (err) {
+    console.error('Restore guest error:', err);
+  }
 }
 
 async function loadMarkets() {
@@ -126,7 +130,7 @@ async function loadMarkets() {
     .order('id', { ascending: true });
 
   if (error) {
-    marketsList.innerHTML = `<div class="card">Could not load markets.</div>`;
+    marketsList.innerHTML = `<div class="card">Could not load markets: ${error.message}</div>`;
     console.error(error);
     return;
   }
@@ -141,14 +145,20 @@ async function loadMarkets() {
         <h3>${market.title}</h3>
         <div class="options">
           ${orderedSelections.map(sel => `
-            <button class="option-btn ${selectedOptions[market.id] === sel.id ? 'selected' : ''}"
+            <button
+              class="option-btn ${selectedOptions[market.id] === sel.id ? 'selected' : ''}"
               onclick="selectOption(${market.id}, ${sel.id})">
               ${sel.label} — ${sel.odds}
             </button>
           `).join('')}
         </div>
         <div class="bet-row">
-          <input type="number" min="1" max="${currentGuest.current_balance}" id="stake_${market.id}" placeholder="Stake" />
+          <input
+            type="number"
+            min="1"
+            max="${currentGuest ? currentGuest.current_balance : 100}"
+            id="stake_${market.id}"
+            placeholder="Stake" />
           <button class="place-btn" onclick="placeBet(${market.id})">Place Bet</button>
         </div>
       </div>
@@ -156,79 +166,90 @@ async function loadMarkets() {
   }).join('');
 }
 
-window.selectOption = function(marketId, selectionId) {
+window.selectOption = function (marketId, selectionId) {
   selectedOptions[marketId] = selectionId;
   loadMarkets();
 };
 
-window.placeBet = async function(marketId) {
-  if (!currentGuest) return;
+window.placeBet = async function (marketId) {
+  try {
+    if (!currentGuest) {
+      alert('No guest loaded.');
+      return;
+    }
 
-  const selectionId = selectedOptions[marketId];
-  const stakeInput = document.getElementById(`stake_${marketId}`);
-  const stake = Number(stakeInput.value);
+    const selectionId = selectedOptions[marketId];
+    const stakeInput = document.getElementById(`stake_${marketId}`);
+    const stake = Number(stakeInput.value);
 
-  if (!selectionId) {
-    alert('Please choose an option first.');
-    return;
+    if (!selectionId) {
+      alert('Please choose an option first.');
+      return;
+    }
+
+    if (!stake || stake < 1) {
+      alert('Enter a valid stake.');
+      return;
+    }
+
+    if (stake > currentGuest.current_balance) {
+      alert('Not enough balance.');
+      return;
+    }
+
+    const { data: selection, error: selectionError } = await supabaseClient
+      .from('selections')
+      .select('*')
+      .eq('id', selectionId)
+      .single();
+
+    if (selectionError) {
+      alert('Could not load odds: ' + selectionError.message);
+      console.error(selectionError);
+      return;
+    }
+
+    const newBalance = currentGuest.current_balance - stake;
+
+    const betInsert = await supabaseClient
+      .from('bets')
+      .insert([{
+        guest_id: currentGuest.id,
+        selection_id: selection.id,
+        stake: stake,
+        odds_at_bet: selection.odds
+      }]);
+
+    if (betInsert.error) {
+      alert('Could not place bet: ' + betInsert.error.message);
+      console.error(betInsert.error);
+      return;
+    }
+
+    const guestUpdate = await supabaseClient
+      .from('guests')
+      .update({ current_balance: newBalance })
+      .eq('id', currentGuest.id)
+      .select()
+      .single();
+
+    if (guestUpdate.error) {
+      alert('Bet saved, but balance failed to update: ' + guestUpdate.error.message);
+      console.error(guestUpdate.error);
+      return;
+    }
+
+    currentGuest = guestUpdate.data;
+    balanceDisplay.textContent = `${currentGuest.current_balance} K-Max Credits`;
+
+    alert('Bet placed!');
+    await loadMarkets();
+    await loadMyBets();
+    await loadLeaderboard();
+  } catch (err) {
+    alert('Unexpected betting error: ' + err.message);
+    console.error(err);
   }
-
-  if (!stake || stake < 1) {
-    alert('Enter a valid stake.');
-    return;
-  }
-
-  if (stake > currentGuest.current_balance) {
-    alert('Not enough balance.');
-    return;
-  }
-
-  const { data: selection, error: selectionError } = await supabaseClient
-    .from('selections')
-    .select('*')
-    .eq('id', selectionId)
-    .single();
-
-  if (selectionError) {
-    alert('Could not load odds.');
-    console.error(selectionError);
-    return;
-  }
-
-  const newBalance = currentGuest.current_balance - stake;
-
-  const betInsert = await supabaseClient
-    .from('bets')
-    .insert([{
-      guest_id: currentGuest.id,
-      selection_id: selection.id,
-      stake: stake,
-      odds_at_bet: selection.odds
-    }]);
-
-  if (betInsert.error) {
-    alert('Could not place bet.');
-    console.error(betInsert.error);
-    return;
-  }
-
-  const guestUpdate = await supabaseClient
-    .from('guests')
-    .update({ current_balance: newBalance })
-    .eq('id', currentGuest.id)
-    .select()
-    .single();
-
-  if (guestUpdate.error) {
-    alert('Bet saved, but balance failed to update.');
-    console.error(guestUpdate.error);
-    return;
-  }
-
-  currentGuest = guestUpdate.data;
-  balanceDisplay.textContent = `${currentGuest.current_balance} K-Max Credits`;
-  alert('Bet placed!');
-  await loadMarkets();
 };
 
 async function loadMyBets() {
@@ -254,7 +275,7 @@ async function loadMyBets() {
     .order('created_at', { ascending: false });
 
   if (error) {
-    myBetsList.innerHTML = 'Could not load bets.';
+    myBetsList.innerHTML = 'Could not load bets: ' + error.message;
     console.error(error);
     return;
   }
@@ -285,7 +306,7 @@ async function loadLeaderboard() {
     .limit(20);
 
   if (error) {
-    leaderboardList.innerHTML = 'Could not load leaderboard.';
+    leaderboardList.innerHTML = 'Could not load leaderboard: ' + error.message;
     console.error(error);
     return;
   }
