@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Forever Stakes</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="header-crown">🧲</div>
+    <h1>The Forever Stakes</h1>
+    <p class="sub">Kiran & Max</p>
+    <div class="balance-box">
+      <span>Balance</span>
+      <strong id="balanceDisplay">100 K-Max Credits</strong>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card login-card" id="loginCard">
+      <h2>Enter the Card Room</h2>
+      <p>Enter your name to receive your 100 K-Max Credits.</p>
+      <input type="text" id="guestName" placeholder="Your name" maxlength="30" />
+      <button id="startBtn">Start</button>
+    </section>
+
+    <section id="appSection" class="hidden">
+      <div class="tabs">
+        <button class="tab active" data-tab="marketsTab">Markets</button>
+        <button class="tab" data-tab="myBetsTab">My Bets</button>
+        <button class="tab" data-tab="leaderboardTab">Leaderboard</button>
+      </div>
+
+      <section id="marketsTab" class="tab-panel active">
+        <div id="marketsList"></div>
+      </section>
+
+      <section id="myBetsTab" class="tab-panel">
+        <div class="card">
+          <h3>My Bets</h3>
+          <div id="myBetsList"></div>
+        </div>
+      </section>
+
+      <section id="leaderboardTab" class="tab-panel">
+        <div class="card">
+          <h3>Leaderboard</h3>
+          <div id="leaderboardList"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
