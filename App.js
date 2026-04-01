@@ -30,48 +30,62 @@ document.querySelectorAll('.tab').forEach(btn => {
 startBtn.addEventListener('click', startGame);
 
 async function startGame() {
-  const name = guestNameInput.value.trim();
-  if (!name) {
-    alert('Please enter your name.');
-    return;
-  }
+  try {
+    const name = guestNameInput.value.trim();
 
-  let { data: guest, error } = await supabaseClient
-    .from('guests')
-    .select('*')
-    .eq('name', name)
-    .maybeSingle();
-
-  if (error) {
-    alert('Could not check your name.');
-    console.error(error);
-    return;
-  }
-
-  if (!guest) {
-    const insertResult = await supabaseClient
-      .from('guests')
-      .insert([{ name }])
-      .select()
-      .single();
-
-    if (insertResult.error) {
-      alert('Could not create guest.');
-      console.error(insertResult.error);
+    if (!name) {
+      alert('Please enter your name.');
       return;
     }
 
-    guest = insertResult.data;
+    alert('Start button clicked');
+
+    let { data: guest, error } = await supabaseClient
+      .from('guests')
+      .select('*')
+      .eq('name', name)
+      .maybeSingle();
+
+    if (error) {
+      alert('Could not check your name: ' + error.message);
+      console.error(error);
+      return;
+    }
+
+    if (!guest) {
+      alert('Creating new guest...');
+
+      const insertResult = await supabaseClient
+        .from('guests')
+        .insert([{ name }])
+        .select()
+        .single();
+
+      if (insertResult.error) {
+        alert('Could not create guest: ' + insertResult.error.message);
+        console.error(insertResult.error);
+        return;
+      }
+
+      guest = insertResult.data;
+    }
+
+    alert('Guest loaded: ' + guest.name);
+
+    currentGuest = guest;
+    localStorage.setItem('forever_stakes_guest_name', guest.name);
+
+    balanceDisplay.textContent = `${guest.current_balance} K-Max Credits`;
+    loginCard.classList.add('hidden');
+    appSection.classList.remove('hidden');
+
+    await loadMarkets();
+
+    alert('Markets loaded');
+  } catch (err) {
+    alert('Unexpected error: ' + err.message);
+    console.error(err);
   }
-
-  currentGuest = guest;
-  localStorage.setItem('forever_stakes_guest_name', guest.name);
-
-  balanceDisplay.textContent = `${guest.current_balance} K-Max Credits`;
-  loginCard.classList.add('hidden');
-  appSection.classList.remove('hidden');
-
-  await loadMarkets();
 }
 
 async function restoreGuest() {
