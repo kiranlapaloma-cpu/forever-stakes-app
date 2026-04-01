@@ -1,10 +1,13 @@
 const SUPABASE_URL = 'https://szdhfauofsjpfavwxyyw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_zrvSGEOZlIa7wtdqjMzR6A_pxSN1JpT';
+const ADMIN_PASSWORD = 'forever2026';
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentGuest = null;
 let selectedOptions = {};
+let adminUnlocked = false;
+let adminWinningSelections = {};
 
 const loginCard = document.getElementById('loginCard');
 const appSection = document.getElementById('appSection');
@@ -14,10 +17,22 @@ const marketsList = document.getElementById('marketsList');
 const myBetsList = document.getElementById('myBetsList');
 const leaderboardList = document.getElementById('leaderboardList');
 const debugBox = document.getElementById('debugBox');
+const adminLoginCard = document.getElementById('adminLoginCard');
+const adminPanel = document.getElementById('adminPanel');
+const adminMarketsList = document.getElementById('adminMarketsList');
 
 function debug(msg) {
   console.log(msg);
   if (debugBox) debugBox.textContent = msg;
+}
+
+function oddsToDecimal(odds) {
+  const parts = odds.split('/');
+  if (parts.length !== 2) return 1;
+  const a = Number(parts[0]);
+  const b = Number(parts[1]);
+  if (!a || !b) return 1;
+  return (a / b) + 1;
 }
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -29,6 +44,7 @@ document.querySelectorAll('.tab').forEach(btn => {
 
     if (btn.dataset.tab === 'myBetsTab') loadMyBets();
     if (btn.dataset.tab === 'leaderboardTab') loadLeaderboard();
+    if (btn.dataset.tab === 'adminTab' && adminUnlocked) loadAdminMarkets();
   });
 });
 
@@ -42,8 +58,6 @@ window.startGame = async function () {
       debug('No name entered');
       return;
     }
-
-    debug('Checking guest...');
 
     const { data: guestCheck, error: checkError } = await supabaseClient
       .from('guests')
@@ -60,8 +74,6 @@ window.startGame = async function () {
     let guest = guestCheck;
 
     if (!guest) {
-      debug('Creating guest...');
-
       const { data: newGuest, error: insertError } = await supabaseClient
         .from('guests')
         .insert([{ name }])
@@ -124,6 +136,7 @@ async function loadMarkets() {
       title,
       slug,
       is_open,
+      settled,
       selections (
         id,
         label,
@@ -148,11 +161,15 @@ async function loadMarkets() {
     return `
       <div class="market-card">
         <h3>${market.title}</h3>
+        <div class="small" style="margin-bottom:8px;">
+          ${market.settled ? 'Settled' : 'Open'}
+        </div>
         <div class="options">
           ${orderedSelections.map(sel => `
             <button
               class="option-btn ${selectedOptions[market.id] === sel.id ? 'selected' : ''}"
-              onclick="selectOption(${market.id}, ${sel.id})">
+              onclick="selectOption(${market.id}, ${sel.id})"
+              ${market.settled ? 'disabled' : ''}>
               ${sel.label} — ${sel.odds}
             </button>
           `).join('')}
@@ -161,10 +178,11 @@ async function loadMarkets() {
           <input
             type="number"
             min="1"
-            max="${currentGuest ? currentGuest.current_balance : 100}"
+            max="${currentGuest ? currentGuest.current_balance : 150}"
             id="stake_${market.id}"
-            placeholder="Stake" />
-          <button class="place-btn" onclick="placeBet(${market.id})">Place Bet</button>
+            placeholder="Stake"
+            ${market.settled ? 'disabled' : ''} />
+          <button class="place-btn" onclick="placeBet(${market.id})" ${market.settled ? 'disabled' : ''}>Place Bet</button>
         </div>
       </div>
     `;
@@ -287,6 +305,7 @@ async function loadMyBets() {
       <strong>${bet.selections.label}</strong><br>
       Stake: ${bet.stake} K-Max Credits<br>
       Odds: ${bet.odds_at_bet}<br>
+      Payout: ${bet.payout} K-Max Credits<br>
       <span class="${bet.status === 'won' ? 'win' : bet.status === 'lost' ? 'lose' : 'pending'}">
         Status: ${bet.status}
       </span>
@@ -299,7 +318,7 @@ async function loadLeaderboard() {
     .from('guests')
     .select('name, current_balance')
     .order('current_balance', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   if (error) {
     leaderboardList.innerHTML = 'Could not load leaderboard: ' + error.message;
@@ -313,6 +332,234 @@ async function loadLeaderboard() {
     </div>
   `).join('');
 }
+
+window.adminLogin = function () {
+  const entered = document.getElementById('adminPassword').value;
+  if (entered !== ADMIN_PASSWORD) {
+    alert('Wrong password');
+    return;
+  }
+
+  adminUnlocked = true;
+  adminLoginCard.classList.add('hidden');
+  adminPanel.classList.remove('hidden');
+  loadAdminMarkets();
+};
+
+async function loadAdminMarkets() {
+  const { data, error } = await supabaseClient
+    .from('markets')
+    .select(`
+      id,
+      title,
+      settled,
+      selections (
+        id,
+        label,
+        odds,
+        sort_order,
+        result
+      )
+    `)
+    .order('id', { ascending: true });
+
+  if (error) {
+    adminMarketsList.innerHTML = `Could not load admin markets: ${error.message}`;
+    return;
+  }
+
+  adminMarketsList.innerHTML = data.map(market => {
+    const orderedSelections = [...market.selections].sort((a, b) => a.sort_order - b.sort_order);
+
+    return `
+      <div class="market-card">
+        <h3>${market.title}</h3>
+        <div class="small" style="margin-bottom:8px;">
+          ${market.settled ? 'Already settled' : 'Not settled'}
+        </div>
+
+        <div class="options">
+          ${orderedSelections.map(sel => `
+            <button
+              class="option-btn ${adminWinningSelections[market.id] === sel.id ? 'selected' : ''}"
+              onclick="adminPickWinner(${market.id}, ${sel.id})"
+              ${market.settled ? 'disabled' : ''}>
+              ${sel.label} — ${sel.odds}
+            </button>
+          `).join('')}
+        </div>
+
+        <button class="place-btn" onclick="settleMarket(${market.id})" ${market.settled ? 'disabled' : ''}>
+          Settle Market
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+window.adminPickWinner = function (marketId, selectionId) {
+  adminWinningSelections[marketId] = selectionId;
+  loadAdminMarkets();
+};
+
+window.settleMarket = async function (marketId) {
+  try {
+    const winningSelectionId = adminWinningSelections[marketId];
+
+    if (!winningSelectionId) {
+      alert('Choose a winning selection first.');
+      return;
+    }
+
+    const { data: market, error: marketError } = await supabaseClient
+      .from('markets')
+      .select(`
+        id,
+        title,
+        settled,
+        selections (
+          id,
+          label,
+          odds
+        )
+      `)
+      .eq('id', marketId)
+      .single();
+
+    if (marketError) {
+      alert('Could not load market.');
+      return;
+    }
+
+    if (market.settled) {
+      alert('This market is already settled.');
+      return;
+    }
+
+    const winningSelection = market.selections.find(s => s.id === winningSelectionId);
+    if (!winningSelection) {
+      alert('Winning selection not found.');
+      return;
+    }
+
+    const selectionIds = market.selections.map(s => s.id);
+
+    const { data: bets, error: betsError } = await supabaseClient
+      .from('bets')
+      .select('*')
+      .in('selection_id', selectionIds)
+      .eq('status', 'open');
+
+    if (betsError) {
+      alert('Could not load bets for this market.');
+      return;
+    }
+
+    const losingBets = bets.filter(b => b.selection_id !== winningSelectionId);
+    const winningBets = bets.filter(b => b.selection_id === winningSelectionId);
+
+    for (const bet of losingBets) {
+      const { error } = await supabaseClient
+        .from('bets')
+        .update({
+          status: 'lost',
+          payout: 0
+        })
+        .eq('id', bet.id);
+
+      if (error) {
+        alert('Failed updating a losing bet.');
+        return;
+      }
+    }
+
+    for (const bet of winningBets) {
+      const payout = Math.round(bet.stake * oddsToDecimal(bet.odds_at_bet));
+
+      const { error: betWinError } = await supabaseClient
+        .from('bets')
+        .update({
+          status: 'won',
+          payout: payout
+        })
+        .eq('id', bet.id);
+
+      if (betWinError) {
+        alert('Failed updating a winning bet.');
+        return;
+      }
+
+      const { data: guest, error: guestError } = await supabaseClient
+        .from('guests')
+        .select('*')
+        .eq('id', bet.guest_id)
+        .single();
+
+      if (guestError) {
+        alert('Failed loading guest balance.');
+        return;
+      }
+
+      const { error: balanceError } = await supabaseClient
+        .from('guests')
+        .update({
+          current_balance: guest.current_balance + payout
+        })
+        .eq('id', guest.id);
+
+      if (balanceError) {
+        alert('Failed updating guest balance.');
+        return;
+      }
+    }
+
+    for (const selection of market.selections) {
+      const resultValue = selection.id === winningSelectionId ? 'won' : 'lost';
+
+      const { error } = await supabaseClient
+        .from('selections')
+        .update({ result: resultValue })
+        .eq('id', selection.id);
+
+      if (error) {
+        alert('Failed updating selection results.');
+        return;
+      }
+    }
+
+    const { error: settleError } = await supabaseClient
+      .from('markets')
+      .update({ settled: true, is_open: false })
+      .eq('id', marketId);
+
+    if (settleError) {
+      alert('Failed marking market as settled.');
+      return;
+    }
+
+    alert(`Market settled: ${market.title}`);
+    await loadMarkets();
+    await loadMyBets();
+    await loadLeaderboard();
+    await loadAdminMarkets();
+
+    if (currentGuest) {
+      const { data: refreshedGuest } = await supabaseClient
+        .from('guests')
+        .select('*')
+        .eq('id', currentGuest.id)
+        .single();
+
+      if (refreshedGuest) {
+        currentGuest = refreshedGuest;
+        balanceDisplay.textContent = `${currentGuest.current_balance} K-Max Credits`;
+      }
+    }
+
+  } catch (err) {
+    alert('Unexpected settle error: ' + err.message);
+  }
+};
 
 debug('App script loaded');
 restoreGuest();
