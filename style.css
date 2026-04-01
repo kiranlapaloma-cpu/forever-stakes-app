@@ -13,6 +13,7 @@
 }
 
 *{box-sizing:border-box}
+
 body{
   margin:0;
   font-family:Arial, sans-serif;
@@ -86,7 +87,8 @@ body{
 }
 
 input[type="text"],
-input[type="number"]{
+input[type="number"],
+input[type="password"]{
   width:100%;
   padding:12px;
   border-radius:10px;
@@ -104,7 +106,8 @@ button{
   font-weight:700;
 }
 
-#startBtn,.place-btn{
+#startBtn,
+.place-btn{
   background:linear-gradient(135deg,var(--gold2),#a36d08);
   color:#1b1303;
   width:100%;
@@ -114,6 +117,7 @@ button{
   display:flex;
   gap:8px;
   margin-bottom:16px;
+  flex-wrap:wrap;
 }
 
 .tab{
@@ -164,6 +168,12 @@ button{
 .option-btn.selected{
   background:var(--gold);
   color:#1a1204;
+}
+
+.option-btn:disabled,
+.place-btn:disabled{
+  opacity:0.6;
+  cursor:not-allowed;
 }
 
 .bet-row{
