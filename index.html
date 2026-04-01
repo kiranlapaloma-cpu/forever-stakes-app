@@ -65,6 +65,20 @@
           <div class="card">
             <h3>Admin Panel</h3>
             <p class="small">Choose the winning outcome for a market, then settle it.</p>
+
+            <div style="margin: 12px 0 18px;">
+              <button
+                class="place-btn"
+                style="background: linear-gradient(135deg,#b91c1c,#7f1d1d); color: white;"
+                onclick="resetAllData()"
+              >
+                Reset All Test Data
+              </button>
+              <p class="small" style="margin-top:8px;">
+                This will delete all bets, reset balances to 150, and reopen every market.
+              </p>
+            </div>
+
             <div id="adminMarketsList"></div>
           </div>
         </div>
