@@ -32,6 +32,7 @@
         <button class="tab active" data-tab="marketsTab">Markets</button>
         <button class="tab" data-tab="myBetsTab">My Bets</button>
         <button class="tab" data-tab="leaderboardTab">Leaderboard</button>
+        <button class="tab" data-tab="adminTab">Admin</button>
       </div>
 
       <section id="marketsTab" class="tab-panel active">
@@ -49,6 +50,23 @@
         <div class="card">
           <h3>Leaderboard</h3>
           <div id="leaderboardList"></div>
+        </div>
+      </section>
+
+      <section id="adminTab" class="tab-panel">
+        <div id="adminLoginCard" class="card">
+          <h3>Admin Login</h3>
+          <p class="small">Host only.</p>
+          <input type="password" id="adminPassword" placeholder="Enter admin password" />
+          <button class="place-btn" onclick="adminLogin()">Enter Admin</button>
+        </div>
+
+        <div id="adminPanel" class="hidden">
+          <div class="card">
+            <h3>Admin Panel</h3>
+            <p class="small">Choose the winning outcome for a market, then settle it.</p>
+            <div id="adminMarketsList"></div>
+          </div>
         </div>
       </section>
     </section>
