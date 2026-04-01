@@ -1,6 +1,7 @@
 const SUPABASE_URL = 'https://szdhfauofsjpfavwxyyw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_zrvSGEOZlIa7wtdqjMzR6A_pxSN1JpT';
 const ADMIN_PASSWORD = 'forever2026';
+const STARTING_BALANCE = 150;
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -27,7 +28,7 @@ function debug(msg) {
 }
 
 function oddsToDecimal(odds) {
-  const parts = odds.split('/');
+  const parts = String(odds).split('/');
   if (parts.length !== 2) return 1;
   const a = Number(parts[0]);
   const b = Number(parts[1]);
@@ -39,6 +40,7 @@ document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
 
@@ -122,6 +124,7 @@ async function restoreGuest() {
     balanceDisplay.textContent = `${guest.current_balance} K-Max Credits`;
     loginCard.classList.add('hidden');
     appSection.classList.remove('hidden');
+
     await loadMarkets();
   } catch (err) {
     console.error(err);
@@ -178,11 +181,16 @@ async function loadMarkets() {
           <input
             type="number"
             min="1"
-            max="${currentGuest ? currentGuest.current_balance : 150}"
+            max="${currentGuest ? currentGuest.current_balance : STARTING_BALANCE}"
             id="stake_${market.id}"
             placeholder="Stake"
             ${market.settled ? 'disabled' : ''} />
-          <button class="place-btn" onclick="placeBet(${market.id})" ${market.settled ? 'disabled' : ''}>Place Bet</button>
+          <button
+            class="place-btn"
+            onclick="placeBet(${market.id})"
+            ${market.settled ? 'disabled' : ''}>
+            Place Bet
+          </button>
         </div>
       </div>
     `;
@@ -335,6 +343,7 @@ async function loadLeaderboard() {
 
 window.adminLogin = function () {
   const entered = document.getElementById('adminPassword').value;
+
   if (entered !== ADMIN_PASSWORD) {
     alert('Wrong password');
     return;
@@ -389,7 +398,10 @@ async function loadAdminMarkets() {
           `).join('')}
         </div>
 
-        <button class="place-btn" onclick="settleMarket(${market.id})" ${market.settled ? 'disabled' : ''}>
+        <button
+          class="place-btn"
+          onclick="settleMarket(${market.id})"
+          ${market.settled ? 'disabled' : ''}>
           Settle Market
         </button>
       </div>
@@ -538,6 +550,9 @@ window.settleMarket = async function (marketId) {
     }
 
     alert(`Market settled: ${market.title}`);
+
+    adminWinningSelections[marketId] = null;
+
     await loadMarkets();
     await loadMyBets();
     await loadLeaderboard();
@@ -555,9 +570,95 @@ window.settleMarket = async function (marketId) {
         balanceDisplay.textContent = `${currentGuest.current_balance} K-Max Credits`;
       }
     }
-
   } catch (err) {
     alert('Unexpected settle error: ' + err.message);
+  }
+};
+
+window.resetAllData = async function () {
+  try {
+    const confirmed = confirm(
+      'Are you sure you want to reset everything? This will delete all bets, reset all balances to 150, and reopen all markets.'
+    );
+    if (!confirmed) return;
+
+    const confirmedAgain = confirm(
+      'Final confirmation: this cannot be undone. Reset all data?'
+    );
+    if (!confirmedAgain) return;
+
+    const { error: deleteBetsError } = await supabaseClient
+      .from('bets')
+      .delete()
+      .neq('id', 0);
+
+    if (deleteBetsError) {
+      alert('Failed to delete bets: ' + deleteBetsError.message);
+      return;
+    }
+
+    const { error: resetGuestsError } = await supabaseClient
+      .from('guests')
+      .update({
+        starting_balance: STARTING_BALANCE,
+        current_balance: STARTING_BALANCE
+      })
+      .neq('id', 0);
+
+    if (resetGuestsError) {
+      alert('Failed to reset guest balances: ' + resetGuestsError.message);
+      return;
+    }
+
+    const { error: resetSelectionsError } = await supabaseClient
+      .from('selections')
+      .update({
+        result: 'pending'
+      })
+      .neq('id', 0);
+
+    if (resetSelectionsError) {
+      alert('Failed to reset selections: ' + resetSelectionsError.message);
+      return;
+    }
+
+    const { error: resetMarketsError } = await supabaseClient
+      .from('markets')
+      .update({
+        settled: false,
+        is_open: true
+      })
+      .neq('id', 0);
+
+    if (resetMarketsError) {
+      alert('Failed to reset markets: ' + resetMarketsError.message);
+      return;
+    }
+
+    if (currentGuest) {
+      const { data: refreshedGuest } = await supabaseClient
+        .from('guests')
+        .select('*')
+        .eq('id', currentGuest.id)
+        .single();
+
+      if (refreshedGuest) {
+        currentGuest = refreshedGuest;
+        balanceDisplay.textContent = `${currentGuest.current_balance} K-Max Credits`;
+      }
+    }
+
+    adminWinningSelections = {};
+    selectedOptions = {};
+
+    alert('All data has been reset.');
+
+    await loadMarkets();
+    await loadMyBets();
+    await loadLeaderboard();
+    await loadAdminMarkets();
+  } catch (err) {
+    alert('Unexpected reset error: ' + err.message);
   }
 };
 
